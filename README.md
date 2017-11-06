@@ -1,6 +1,6 @@
 # MCP342x ADC library for mbed
 
-Mbed library to support Microchip MCP342x ADC over I2C
+Originally Arduino library ported to mbedOS5 to support Microchip MCP342x ADC over I2C
 
 ## Supported devices
 
@@ -35,6 +35,6 @@ int main() {
 }
 ```
 
-[Original code](https://github.com/battosai30/MCP3424/)
+[Original Arduino library source](https://github.com/battosai30/MCP3424/)
 
 
