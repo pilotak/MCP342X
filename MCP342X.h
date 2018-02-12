@@ -27,8 +27,20 @@ Edited for mbed by www.github.com/pilotak
 #define MCP342X_H
 
 #include "mbed.h"
+#include <climits>
 
 #define MCP3422_DEFAULT_ADDRESS 0x68 << 1
+
+#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BINARY(byte)  \
+  (byte & 0x80 ? '1' : '0'), \
+  (byte & 0x40 ? '1' : '0'), \
+  (byte & 0x20 ? '1' : '0'), \
+  (byte & 0x10 ? '1' : '0'), \
+  (byte & 0x08 ? '1' : '0'), \
+  (byte & 0x04 ? '1' : '0'), \
+  (byte & 0x02 ? '1' : '0'), \
+  (byte & 0x01 ? '1' : '0')
 
 class MCP342X {
  public:
@@ -54,19 +66,31 @@ class MCP342X {
 
   MCP342X(uint8_t slave_adr = MCP3422_DEFAULT_ADDRESS);
   virtual ~MCP342X(void);
-  void init(I2C * i2c_obj);
+  void init(I2C * i2c_obj, Callback<void(uint8_t)> callback = NULL);
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
-  int32_t read(uint8_t channel);
+  void read(uint8_t channel, Callback<void(int32_t)> callback);
   int32_t readVoltage(uint8_t channel);
-  void newConversion(uint8_t channel);
+  void process();
+
+ private:
+  void internal_cb_handler(int event);
+  void isConversionFinished();
+  void test();
+
+  Callback<void(int32_t)> done_cb;
+  Callback<void(uint8_t)> error_cb;
+
+  uint8_t _address;
+  char _config[4];
+  char _Buffer[4];
+  uint8_t _current_channel;
+  uint8_t _requested_bytes;
 
  protected:
   I2C * i2c;
-  uint8_t address;
-  char _config[4];
-  char _Buffer[4];
+  Timeout timeout;
 
-  bool isConversionFinished(uint8_t channel);
+  bool transfer(const char *data, uint8_t rx_len, uint8_t tx_len = 1);
 };
 
 #endif

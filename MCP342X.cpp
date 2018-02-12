@@ -26,23 +26,24 @@ Edited for mbed by www.github.com/pilotak
 
 
 MCP342X::MCP342X(uint8_t slave_adr):
-    address(slave_adr) {
+    _address(slave_adr),
+    _current_channel(UCHAR_MAX) {
     i2c = NULL;
 }
 
 MCP342X::~MCP342X(void) {
 }
 
-void MCP342X::init(I2C * i2c_obj) {
-
+void MCP342X::init(I2C * i2c_obj, Callback<void(uint8_t)> callback) {
     i2c = i2c_obj;
+    error_cb = callback;
 
     _config[0] = 0b00010000; // channel 1, continuous mode, 12bit
     _config[1] = 0b00110000; // channel 2, continuous mode, 12bit
     _config[2] = 0b01010000; // channel 3, continuous mode, 12bit
     _config[3] = 0b01110000; // channel 4, continuous mode, 12bit
 
-    memset(_Buffer, 0, sizeof(_Buffer));
+    memset(_Buffer, 0xFF, sizeof(_Buffer));
 }
 
 bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain) {
@@ -51,9 +52,11 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
     if (i2c != NULL) {
-        i2c->lock();
-        i2c->write(address, &_config[channel], 1);
-        i2c->unlock();
+        if (mode == Continuous) {
+            i2c->lock();
+            i2c->write(_address, &_config[channel], 1);
+            i2c->unlock();
+        }
 
         return true;
     }
@@ -61,41 +64,23 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
     return false;
 }
 
-void MCP342X::newConversion(uint8_t channel) {
-
-    char byte = _config[channel] |= 128;
-
+void MCP342X::isConversionFinished() {
     i2c->lock();
-    i2c->write(address, &byte, 1);
+    i2c->read(_address, _Buffer, _requested_bytes);
     i2c->unlock();
-}
 
-bool MCP342X::isConversionFinished(uint8_t channel) {
+    if ((_Buffer[_requested_bytes - 1] >> 7) == 0) {
+        process();
 
-    char requested_bytes = 4;
-
-    if (((_config[channel] >> 2) & 0b11) != 0b11) { // 18bit
-        requested_bytes = 3;
+    } else {
+        Thread::wait(60);
+        isConversionFinished();
     }
-
-    i2c->lock();
-    i2c->read(address, _Buffer, requested_bytes);
-    i2c->unlock();
-
-    return _Buffer[requested_bytes - 1] >> 7;
 }
 
-int32_t MCP342X::read(uint8_t channel) {
-
+void MCP342X::process() {
     int32_t result = 0;
-
-    if (((_config[channel] >> 4) & 1) == OneShot) {
-        newConversion(channel);
-    }
-
-    while (isConversionFinished(channel) == 1);
-
-    uint8_t resolution = ((_config[channel] >> 2) & 0b11);
+    uint8_t resolution = ((_config[_current_channel] >> 2) & 0b11);
 
     switch (resolution) {
 
@@ -133,10 +118,69 @@ int32_t MCP342X::read(uint8_t channel) {
         }
     }
 
-    return result;
+    _current_channel = UCHAR_MAX;
+    done_cb.call(result);
 }
 
-int32_t MCP342X::readVoltage(uint8_t channel) {
+void MCP342X::read(uint8_t channel, Callback<void(int32_t)> callback) {
+    done_cb = callback;
+    printf("read\n");
+
+    if (_current_channel == UCHAR_MAX) {
+
+        _current_channel = channel;
+
+        _requested_bytes = 4;
+
+        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) { // 18bit
+            _requested_bytes = 3;
+        }
+
+        if (((_config[channel] >> 4) & 1) == OneShot) {
+            char byte = _config[channel] |= 128;
+
+            i2c->lock();
+            i2c->write(_address, &byte, 1);
+            i2c->unlock();
+        }
+
+        isConversionFinished();
+    }
+}
+
+/*bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
+    if (i2c->transfer(_address, data, tx_len, (char*)_Buffer, rx_len, event_callback_t(this, &MCP342X::internal_cb_handler),
+                      I2C_EVENT_ALL) != 0) {
+        if (error_cb) {
+            _current_channel = UCHAR_MAX;
+            error_cb.call(1);
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
+void MCP342X::internal_cb_handler(int event) {
+    if (event & I2C_EVENT_ERROR_NO_SLAVE) {
+        if (error_cb) {
+            _current_channel = UCHAR_MAX;
+            error_cb.call(3);
+        }
+
+    } else if (event & I2C_EVENT_ERROR) {
+        if (error_cb) {
+            _current_channel = UCHAR_MAX;
+            error_cb.call(2);
+        }
+
+    } else {
+
+    }
+}
+*/
+/*int32_t MCP342X::readVoltage(uint8_t channel) {
 
     int32_t result = read(channel);
     uint8_t resolution = ((_config[channel] >> 2) & 0b11);
@@ -188,6 +232,6 @@ int32_t MCP342X::readVoltage(uint8_t channel) {
     }
 
     return result;
-}
+}*/
 
 
