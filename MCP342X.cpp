@@ -118,21 +118,21 @@ void MCP342X::process() {
         }
     }
 
+    uint8_t channel = _current_channel;
     _current_channel = UCHAR_MAX;
-    done_cb.call(result);
+    done_cb.call(channel, result);
 }
 
-void MCP342X::read(uint8_t channel, Callback<void(int32_t)> callback) {
+void MCP342X::read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback) {
     done_cb = callback;
     printf("read\n");
 
     if (_current_channel == UCHAR_MAX) {
-
         _current_channel = channel;
 
         _requested_bytes = 4;
 
-        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) { // 18bit
+        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // 18bit
             _requested_bytes = 3;
         }
 

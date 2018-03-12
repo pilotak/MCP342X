@@ -68,7 +68,7 @@ class MCP342X {
   virtual ~MCP342X(void);
   void init(I2C * i2c_obj, Callback<void(uint8_t)> callback = NULL);
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
-  void read(uint8_t channel, Callback<void(int32_t)> callback);
+  void read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback);
   int32_t readVoltage(uint8_t channel);
   void process();
 
@@ -77,7 +77,7 @@ class MCP342X {
   void isConversionFinished();
   void test();
 
-  Callback<void(int32_t)> done_cb;
+  Callback<void(uint8_t, int32_t)> done_cb;
   Callback<void(uint8_t)> error_cb;
 
   uint8_t _address;
