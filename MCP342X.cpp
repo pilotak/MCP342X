@@ -1,49 +1,59 @@
 /*
-Originally written by B@tto
-Contact : batto@hotmail.fr
-Edited for mbed by www.github.com/pilotak
+MIT License
 
+Copyright (c) 2018 Pavel Slama
 
-  MCP342X.cpp - ADC 16/18 bits i2c library for mbed
-  Copyright (c) 2012 Yann LEFEBVRE.  All right reserved.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-  This library is free software; you can redistribute it and/or
-  modify it under the terms of the GNU Lesser General Public
-  License as published by the Free Software Foundation; either
-  version 2.1 of the License, or (at your option) any later version.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-  This library is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-  Lesser General Public License for more details.
-
-  You should have received a copy of the GNU Lesser General Public
-  License along with this library; if not, write to the Free Software
-  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 */
-#include <MCP342X.h>
-#include "mbed.h"
 
+#include "mbed.h"
+#include "mbed_events.h"
+#include "MCP342X.h"
 
 MCP342X::MCP342X(uint8_t slave_adr):
     _address(slave_adr),
-    _current_channel(UCHAR_MAX) {
-    i2c = NULL;
+    _current_channel(UCHAR_MAX),
+    _stage(None),
+    _i2c(NULL),
+    _queue(NULL) {
 }
 
 MCP342X::~MCP342X(void) {
 }
 
-void MCP342X::init(I2C * i2c_obj, Callback<void(uint8_t)> callback) {
-    i2c = i2c_obj;
+void MCP342X::init(I2C * i2c_obj, EventQueue * queue, Callback<void(ErrorType)> callback) {
+    _i2c = i2c_obj;
     error_cb = callback;
 
-    _config[0] = 0b00010000; // channel 1, continuous mode, 12bit
-    _config[1] = 0b00110000; // channel 2, continuous mode, 12bit
-    _config[2] = 0b01010000; // channel 3, continuous mode, 12bit
-    _config[3] = 0b01110000; // channel 4, continuous mode, 12bit
+    _config[0] = 0b00010000;  // channel 1, continuous mode, 12bit
+    _config[1] = 0b00110000;  // channel 2, continuous mode, 12bit
+    _config[2] = 0b01010000;  // channel 3, continuous mode, 12bit
+    _config[3] = 0b01110000;  // channel 4, continuous mode, 12bit
+
+    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
+    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
+    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
+    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
 
     memset(_Buffer, 0xFF, sizeof(_Buffer));
+
+    _queue = queue;
 }
 
 bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain) {
@@ -51,11 +61,29 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
     _config[channel] |= ((res << 2) | gain);
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
-    if (i2c != NULL) {
+    switch (res) {
+        case _12bit:
+            _wait_time[channel] = 5;  // 4.166ms@12bit
+            break;
+
+        case _14bit:
+            _wait_time[channel] = 17;  // 16.666ms@14bit
+            break;
+
+        case _16bit:
+            _wait_time[channel] = 67;  // 66.666ms@16bit
+            break;
+
+        case _18bit:
+            _wait_time[channel] = 267;  // 266.666ms@18bit
+            break;
+    }
+
+    if (_i2c != NULL && _queue != NULL) {
+        _stage = Init;
+
         if (mode == Continuous) {
-            i2c->lock();
-            i2c->write(_address, &_config[channel], 1);
-            i2c->unlock();
+            transfer(&_config[channel]);
         }
 
         return true;
@@ -64,29 +92,14 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
     return false;
 }
 
-void MCP342X::isConversionFinished() {
-    i2c->lock();
-    i2c->read(_address, _Buffer, _requested_bytes);
-    i2c->unlock();
-
-    if ((_Buffer[_requested_bytes - 1] >> 7) == 0) {
-        process();
-
-    } else {
-        Thread::wait(60);
-        isConversionFinished();
-    }
-}
-
 void MCP342X::process() {
     int32_t result = 0;
     uint8_t resolution = ((_config[_current_channel] >> 2) & 0b11);
 
     switch (resolution) {
-
         case _12bit: {
             int16_t tmp = ((_Buffer[0] << 8) | _Buffer[1]);
-            tmp &= 0x0FFF; // substract 12bit
+            tmp &= 0x0FFF;  // substract 12bit
 
             result = (int32_t)tmp;
 
@@ -95,7 +108,7 @@ void MCP342X::process() {
 
         case _14bit: {
             int16_t tmp = ((_Buffer[0] << 8) | _Buffer[1]);
-            tmp &= 0x3FFF; // substract 14bit
+            tmp &= 0x3FFF;  // substract 14bit
 
             result = (int32_t)tmp;
 
@@ -112,7 +125,7 @@ void MCP342X::process() {
 
         case _18bit: {
             result = ((_Buffer[0] << 16) | (_Buffer[1] << 8) | _Buffer[2]);
-            result &= 0x3FFFF; // substract 18bit
+            result &= 0x3FFFF;  // substract 18bit
 
             break;
         }
@@ -123,37 +136,45 @@ void MCP342X::process() {
     done_cb.call(channel, result);
 }
 
-void MCP342X::read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback) {
+bool MCP342X::read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback) {
     done_cb = callback;
-    printf("read\n");
 
-    if (_current_channel == UCHAR_MAX) {
+
+    if (_current_channel == UCHAR_MAX && _stage == Init) {
         _current_channel = channel;
 
         _requested_bytes = 4;
 
-        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // 18bit
+        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
             _requested_bytes = 3;
         }
 
         if (((_config[channel] >> 4) & 1) == OneShot) {
-            char byte = _config[channel] |= 128;
+            _stage = Reading;
+            _config[channel] |= 128;  // new conversion
+            transfer(&_config[channel]);
 
-            i2c->lock();
-            i2c->write(_address, &byte, 1);
-            i2c->unlock();
+        } else if (((_config[channel] >> 4) & 1) == Continuous) {
+            isConversionFinished();
         }
 
-        isConversionFinished();
+        return true;
+
     }
+
+    return false;
 }
 
-/*bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
-    if (i2c->transfer(_address, data, tx_len, (char*)_Buffer, rx_len, event_callback_t(this, &MCP342X::internal_cb_handler),
-                      I2C_EVENT_ALL) != 0) {
+bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
+    memset(_Buffer, 0xFF, sizeof(_Buffer));  // null buffer
+
+    if (_i2c->transfer(_address, data, tx_len, reinterpret_cast<char *>(_Buffer), rx_len, event_callback_t(this, &MCP342X::cbHandler),
+                       I2C_EVENT_ALL) != 0) {
+        _stage = Init;
+        _current_channel = UCHAR_MAX;
+
         if (error_cb) {
-            _current_channel = UCHAR_MAX;
-            error_cb.call(1);
+            error_cb.call(TransferError);
         }
 
         return false;
@@ -162,27 +183,52 @@ void MCP342X::read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback) {
     return true;
 }
 
-void MCP342X::internal_cb_handler(int event) {
+void MCP342X::isConversionFinished() {
+    _stage = Waiting;
+    _config[_current_channel] &= ~(128);  // clear new conversion
+
+    transfer(&_config[_current_channel], _requested_bytes);
+}
+
+void MCP342X::cbHandler(int event) {
     if (event & I2C_EVENT_ERROR_NO_SLAVE) {
+        _stage = Init;
+        _current_channel = UCHAR_MAX;
+
         if (error_cb) {
-            _current_channel = UCHAR_MAX;
-            error_cb.call(3);
+            error_cb.call(NoSlave);
         }
 
     } else if (event & I2C_EVENT_ERROR) {
+        _stage = Init;
+        _current_channel = UCHAR_MAX;
+
         if (error_cb) {
-            _current_channel = UCHAR_MAX;
-            error_cb.call(2);
+            error_cb.call(EventError);
         }
 
     } else {
+        if (_stage == Reading) {
+            _queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished));
 
+        } else if (_stage == Waiting) {
+            if ((_Buffer[_requested_bytes - 1] >> 7) == 0) {
+                _stage = Init;
+                process();
+
+            } else {
+                _stage = Init;
+                _current_channel = UCHAR_MAX;
+
+                if (error_cb) {
+                    error_cb.call(Timeout);
+                }
+            }
+        }
     }
 }
-*/
-/*int32_t MCP342X::readVoltage(uint8_t channel) {
 
-    int32_t result = read(channel);
+int32_t MCP342X::toVoltage(uint8_t channel, int32_t value) {
     uint8_t resolution = ((_config[channel] >> 2) & 0b11);
     uint8_t pga = (_config[channel] & 0b11);
 
@@ -205,33 +251,30 @@ void MCP342X::internal_cb_handler(int event) {
     }
 
     switch (resolution) {
-
         case _12bit:
-            result /= pga;
-            result *= 1000;
+            value /= pga;
+            value *= 1000;
 
             break;
 
         case _14bit:
-            result /= pga;
-            result *= 250;
+            value /= pga;
+            value *= 250;
 
             break;
 
         case _16bit:
-            result /= pga;
-            result *= 62.5;
+            value /= pga;
+            value *= 62.5;
 
             break;
 
         case _18bit:
-            result /= pga;
-            result *= 15.625;
+            value /= pga;
+            value *= 15.625;
 
             break;
     }
 
-    return result;
-}*/
-
-
+    return value;
+}
