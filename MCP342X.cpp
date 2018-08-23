@@ -97,13 +97,12 @@ int32_t MCP342X::read(uint8_t channel) {
     timer.start();
 
     while (isConversionFinished(channel) == 1) {
-        if (timer.read_ms() >= DEFAULT_TIMEOUT) {
+        if (timer.read_ms() >= MCP342X_DEFAULT_TIMEOUT) {
             timer.stop();
+            debug("ADC timeout\n");
             return 0;
         }
     }
-
-
 
     switch (resolution) {
         case _12bit: {

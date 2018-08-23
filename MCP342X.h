@@ -28,8 +28,8 @@ Edited for mbed by www.github.com/pilotak
 
 #include "mbed.h"
 
-#define DEFAULT_ADDRESS 0x68 << 1
-#define DEFAULT_TIMEOUT 100  // ms
+#define MCP342X_DEFAULT_ADDRESS 0x68 << 1
+#define MCP342X_DEFAULT_TIMEOUT 100  // ms
 
 class MCP342X {
  public:
@@ -52,7 +52,7 @@ class MCP342X {
     _18bit
   } Resolution;
 
-  explicit MCP342X(uint8_t slave_adr = DEFAULT_ADDRESS);
+  explicit MCP342X(uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
   virtual ~MCP342X(void);
   void init(I2C * i2c_obj);
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
