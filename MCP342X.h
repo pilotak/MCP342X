@@ -28,11 +28,11 @@ Edited for mbed by www.github.com/pilotak
 
 #include "mbed.h"
 
-#define MCP3422_DEFAULT_ADDRESS 0x68 << 1
+#define DEFAULT_ADDRESS 0x68 << 1
+#define DEFAULT_TIMEOUT 100  // ms
 
 class MCP342X {
  public:
-
   typedef enum {
     OneShot = 0,
     Continuous
@@ -52,7 +52,7 @@ class MCP342X {
     _18bit
   } Resolution;
 
-  MCP342X(uint8_t slave_adr = MCP3422_DEFAULT_ADDRESS);
+  explicit MCP342X(uint8_t slave_adr = DEFAULT_ADDRESS);
   virtual ~MCP342X(void);
   void init(I2C * i2c_obj);
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
@@ -69,5 +69,4 @@ class MCP342X {
   bool isConversionFinished(uint8_t channel);
 };
 
-#endif
-
+#endif  // MCP342X_H
