@@ -29,7 +29,7 @@ SOFTWARE.
 #include "mbed.h"
 #include "mbed_events.h"
 
-#define MCP3422_DEFAULT_ADDRESS 0x68 << 1
+#define MCP342X_DEFAULT_ADDRESS 0x68 << 1
 
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
@@ -77,7 +77,7 @@ class MCP342X {
     Timeout
   } ErrorType;
 
-  explicit MCP342X(uint8_t slave_adr = MCP3422_DEFAULT_ADDRESS);
+  explicit MCP342X(uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
   virtual ~MCP342X(void);
   void init(I2C * i2c_obj, EventQueue * queue, Callback<void(ErrorType)> callback = NULL);
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
