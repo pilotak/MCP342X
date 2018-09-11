@@ -71,15 +71,16 @@ class MCP342X {
   } Stage;
 
   typedef enum {
-    NoSlave,
+    NoSlave = 0,
     EventError,
     TransferError,
     Timeout
   } ErrorType;
 
-  explicit MCP342X(uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
+  MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
+  MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
   virtual ~MCP342X(void);
-  void init(I2C * i2c_obj, EventQueue * queue, Callback<void(ErrorType)> callback = NULL);
+  void init(Callback<void(ErrorType)> callback = NULL);
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
   void process();
   bool read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback);
@@ -102,6 +103,7 @@ class MCP342X {
 
  protected:
   I2C * _i2c;
+  uint32_t _i2c_buffer[sizeof(I2C) / sizeof(uint32_t)];
   EventQueue * _queue;
 
   bool transfer(const char *data, uint8_t rx_len = 0, uint8_t tx_len = 1);

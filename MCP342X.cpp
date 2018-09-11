@@ -26,19 +26,30 @@ SOFTWARE.
 #include "mbed_events.h"
 #include "MCP342X.h"
 
-MCP342X::MCP342X(uint8_t slave_adr):
+MCP342X::MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr, int32_t freq):
     _address(slave_adr),
     _current_channel(UCHAR_MAX),
-    _stage(None),
-    _i2c(NULL),
-    _queue(NULL) {
+    _stage(None) {
+    _i2c = new (_i2c_buffer) I2C(sda, scl);
+    _i2c->frequency(freq);
+    _queue = queue;
+}
+
+MCP342X::MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr):
+    _address(slave_adr),
+    _current_channel(UCHAR_MAX),
+    _stage(None) {
+    _i2c = i2c_obj;
+    _queue = queue;
 }
 
 MCP342X::~MCP342X(void) {
+    if (_i2c == (I2C*)_i2c_buffer) {
+        _i2c->~I2C();
+    }
 }
 
-void MCP342X::init(I2C * i2c_obj, EventQueue * queue, Callback<void(ErrorType)> callback) {
-    _i2c = i2c_obj;
+void MCP342X::init(Callback<void(ErrorType)> callback) {
     error_cb = callback;
 
     _config[0] = 0b00010000;  // channel 1, continuous mode, 12bit
@@ -52,12 +63,9 @@ void MCP342X::init(I2C * i2c_obj, EventQueue * queue, Callback<void(ErrorType)> 
     _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
 
     memset(_Buffer, 0xFF, sizeof(_Buffer));
-
-    _queue = queue;
 }
 
 bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain) {
-
     _config[channel] |= ((res << 2) | gain);
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
@@ -159,7 +167,6 @@ bool MCP342X::read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback) {
         }
 
         return true;
-
     }
 
     return false;
