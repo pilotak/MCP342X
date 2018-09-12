@@ -43,70 +43,70 @@ SOFTWARE.
   (byte & 0x01 ? '1' : '0')
 
 class MCP342X {
- public:
-  typedef enum {
-    OneShot = 0,
-    Continuous
-  } Conversion;
+  public:
+    typedef enum {
+        OneShot = 0,
+        Continuous
+    } Conversion;
 
-  typedef enum {
-    x1 = 0,
-    x2,
-    x4,
-    x8
-  } PGA;
+    typedef enum {
+        x1 = 0,
+        x2,
+        x4,
+        x8
+    } PGA;
 
-  typedef enum {
-    _12bit = 0,
-    _14bit,
-    _16bit,
-    _18bit
-  } Resolution;
+    typedef enum {
+        _12bit = 0,
+        _14bit,
+        _16bit,
+        _18bit
+    } Resolution;
 
-  typedef enum {
-    None,
-    Init,
-    Reading,
-    Waiting
-  } Stage;
+    typedef enum {
+        Init,
+        Ready,
+        Reading,
+        Waiting
+    } Stage;
 
-  typedef enum {
-    NoSlave = 0,
-    EventError,
-    TransferError,
-    Timeout
-  } ErrorType;
+    typedef enum {
+        NoSlave = 0,
+        EventError,
+        TransferError,
+        Timeout
+    } ErrorType;
 
-  MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
-  MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
-  virtual ~MCP342X(void);
-  void init(Callback<void(ErrorType)> callback = NULL);
-  bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
-  void process();
-  bool read(uint8_t channel, Callback<void(uint8_t, int32_t)> callback);
-  int32_t toVoltage(uint8_t channel, int32_t value);
+    MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
+    MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
+    virtual ~MCP342X(void);
+    void init(Callback<void(uint8_t, int32_t)> done_callback, Callback<void(ErrorType)> callback = NULL);
+    bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
+    void process();
+    bool read(uint8_t channel);
+    int32_t toVoltage(uint8_t channel, int32_t value);
 
- private:
-  void cbHandler(int event);
-  void isConversionFinished();
+  private:
+    void cbHandler(int event);
+    void isConversionFinished();
 
-  Callback<void(uint8_t, int32_t)> done_cb;
-  Callback<void(ErrorType)> error_cb;
+    Callback<void(uint8_t, int32_t)> _done_cb;
+    Callback<void(ErrorType)> _error_cb;
 
-  uint8_t _address;
-  char _config[4];
-  char _Buffer[4];
-  uint8_t _current_channel;
-  uint8_t _requested_bytes;
-  Stage _stage;
-  uint16_t _wait_time[4];
+    uint8_t _address;
+    char _config[4];
+    char _Buffer[4];
+    uint8_t _current_channel;
+    uint8_t _requested_bytes;
+    Stage _stage;
+    uint16_t _wait_time[4];
 
- protected:
-  I2C * _i2c;
-  uint32_t _i2c_buffer[sizeof(I2C) / sizeof(uint32_t)];
-  EventQueue * _queue;
+  protected:
+    I2C * _i2c;
+    uint32_t _i2c_buffer[sizeof(I2C) / sizeof(uint32_t)];
+    EventQueue * _queue;
 
-  bool transfer(const char *data, uint8_t rx_len = 0, uint8_t tx_len = 1);
+    bool transfer(const char *data, uint8_t rx_len = 0, uint8_t tx_len = 1);
 };
 
 #endif
