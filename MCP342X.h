@@ -80,15 +80,16 @@ class MCP342X {
     MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
     MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
     virtual ~MCP342X(void);
-    void init(Callback<void(uint8_t, int32_t)> done_callback, Callback<void(ErrorType)> callback = NULL);
+    void init(Callback<void(uint8_t, int32_t)> done_callback, Callback<void(ErrorType)> err_callback = NULL);
     bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
     void process();
-    bool read(uint8_t channel);
+    int8_t read(uint8_t channel);
     int32_t toVoltage(uint8_t channel, int32_t value);
 
   private:
     void cbHandler(int event);
     void isConversionFinished();
+    void ready();
 
     Callback<void(uint8_t, int32_t)> _done_cb;
     Callback<void(ErrorType)> _error_cb;

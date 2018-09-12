@@ -143,33 +143,38 @@ void MCP342X::process() {
     }
 
     uint8_t channel = _current_channel;
-    _current_channel = UCHAR_MAX;
-    _stage = Ready;
+    ready();
     _done_cb.call(channel, result);
 }
 
-bool MCP342X::read(uint8_t channel) {
-    if (_current_channel == UCHAR_MAX && _stage == Ready) {
-        _current_channel = channel;
+int8_t MCP342X::read(uint8_t channel) {
+    if (_current_channel == UCHAR_MAX) {
+        if (_stage == Ready) {
+            _current_channel = channel;
 
-        _requested_bytes = 4;
+            _requested_bytes = 4;
 
-        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
-            _requested_bytes = 3;
+            if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
+                _requested_bytes = 3;
+            }
+
+            if (((_config[channel] >> 4) & 1) == OneShot) {
+                _stage = Reading;
+                _config[channel] |= 128;  // new conversion
+                return transfer(&_config[channel]);
+
+            } else if (((_config[channel] >> 4) & 1) == Continuous) {
+                isConversionFinished();
+                return 1;
+            }
+
+            return -3;
         }
 
-        if (((_config[channel] >> 4) & 1) == OneShot) {
-            _stage = Reading;
-            _config[channel] |= 128;  // new conversion
-            return transfer(&_config[channel]);
-
-        } else if (((_config[channel] >> 4) & 1) == Continuous) {
-            isConversionFinished();
-            return true;
-        }
+        return -2;
     }
 
-    return false;
+    return -1;
 }
 
 bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
@@ -177,8 +182,7 @@ bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
 
     if (_i2c->transfer(_address, data, tx_len, reinterpret_cast<char *>(_Buffer), rx_len, event_callback_t(this, &MCP342X::cbHandler),
                        I2C_EVENT_ALL) != 0) {
-        _stage = Ready;
-        _current_channel = UCHAR_MAX;
+        ready();
 
         if (_error_cb) {
             _error_cb.call(TransferError);
@@ -191,24 +195,27 @@ bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
 }
 
 void MCP342X::isConversionFinished() {
-    _stage = Waiting;
-    _config[_current_channel] &= ~(128);  // clear new conversion
+    if (_current_channel < 4) {
+        _stage = Waiting;
+        _config[_current_channel] &= ~(128);  // clear new conversion
 
-    transfer(&_config[_current_channel], _requested_bytes);
+        transfer(&_config[_current_channel], _requested_bytes);
+
+    } else {
+        ready();
+    }
 }
 
 void MCP342X::cbHandler(int event) {
     if (event & I2C_EVENT_ERROR_NO_SLAVE) {
-        _stage = Ready;
-        _current_channel = UCHAR_MAX;
+        ready();
 
         if (_error_cb) {
             _error_cb.call(NoSlave);
         }
 
     } else if (event & I2C_EVENT_ERROR) {
-        _stage = Ready;
-        _current_channel = UCHAR_MAX;
+        ready();
 
         if (_error_cb) {
             _error_cb.call(EventError);
@@ -216,9 +223,8 @@ void MCP342X::cbHandler(int event) {
 
     } else {
         if (_stage == Reading) {
-            if (_queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished)) <= 0) {
-                _stage = Ready;  // prevent no space left in queue
-                _current_channel = UCHAR_MAX;
+            if (_current_channel > 3 || _queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished)) <= 0) {
+                ready();  // prevent no space left in queue
             }
 
         } else if (_stage == Waiting) {
@@ -226,19 +232,20 @@ void MCP342X::cbHandler(int event) {
                 process();
 
             } else {
-                _stage = Ready;
-                _current_channel = UCHAR_MAX;
+                ready();
 
                 if (_error_cb) {
                     _error_cb.call(Timeout);
                 }
             }
 
-        } else {
-            _stage = Ready;
-            _current_channel = UCHAR_MAX;
         }
     }
+}
+
+void MCP342X::ready() {
+    _stage = Ready;
+    _current_channel = UCHAR_MAX;
 }
 
 int32_t MCP342X::toVoltage(uint8_t channel, int32_t value) {
