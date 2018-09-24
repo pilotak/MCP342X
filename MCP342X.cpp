@@ -29,7 +29,8 @@ SOFTWARE.
 MCP342X::MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr, int32_t freq):
     _address(slave_adr),
     _current_channel(UCHAR_MAX),
-    _stage(Init) {
+    _stage(Init),
+    _queue_id(-1) {
     _i2c = new (_i2c_buffer) I2C(sda, scl);
     _i2c->frequency(freq);
     _queue = queue;
@@ -38,7 +39,8 @@ MCP342X::MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr
 MCP342X::MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr):
     _address(slave_adr),
     _current_channel(UCHAR_MAX),
-    _stage(Init) {
+    _stage(Init),
+    _queue_id(-1) {
     _i2c = i2c_obj;
     _queue = queue;
 }
@@ -49,7 +51,7 @@ MCP342X::~MCP342X(void) {
     }
 }
 
-void MCP342X::init(Callback<void(uint8_t, int32_t)> done_callback, Callback<void(ErrorType)> err_callback) {
+void MCP342X::init(const Callback<void(uint8_t, int32_t)> &done_callback, const Callback<void(ErrorType)> &err_callback) {
     _done_cb = done_callback;
     _error_cb = err_callback;
 
@@ -148,30 +150,28 @@ void MCP342X::process() {
 }
 
 int8_t MCP342X::read(uint8_t channel) {
-    if (_current_channel == UCHAR_MAX) {
-        if (_stage == Ready) {
-            _current_channel = channel;
+    if (_queue_id > -1) {
+        _queue->cancel(_queue_id);
+        _queue_id = -1;
+    }
 
-            _requested_bytes = 4;
+    _i2c->abort_transfer();
 
-            if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
-                _requested_bytes = 3;
-            }
+    _current_channel = channel;
+    _requested_bytes = 4;
+    _stage = Reading;
 
-            if (((_config[channel] >> 4) & 1) == OneShot) {
-                _stage = Reading;
-                _config[channel] |= 128;  // new conversion
-                return transfer(&_config[channel]);
+    if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
+        _requested_bytes = 3;
+    }
 
-            } else if (((_config[channel] >> 4) & 1) == Continuous) {
-                isConversionFinished();
-                return 1;
-            }
+    if (((_config[channel] >> 4) & 1) == OneShot) {
+        _config[channel] |= 128;  // new conversion
+        return transfer(&_config[channel]);
 
-            return -3;
-        }
-
-        return -2;
+    } else if (((_config[channel] >> 4) & 1) == Continuous) {
+        isConversionFinished();
+        return 1;
     }
 
     return -1;
@@ -195,8 +195,10 @@ bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
 }
 
 void MCP342X::isConversionFinished() {
+    _queue_id = -1;
+
     if (_current_channel < 4) {
-        _stage = Waiting;
+        _stage = Request;
         _config[_current_channel] &= ~(128);  // clear new conversion
 
         transfer(&_config[_current_channel], _requested_bytes);
@@ -223,11 +225,15 @@ void MCP342X::cbHandler(int event) {
 
     } else {
         if (_stage == Reading) {
-            if (_current_channel > 3 || _queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished)) <= 0) {
+            _stage = Waiting;
+
+            _queue_id = _queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished));
+
+            if (_current_channel > 3 || _queue_id <= 0) {
                 ready();  // prevent no space left in queue
             }
 
-        } else if (_stage == Waiting) {
+        } else if (_stage == Request) {
             if ((_Buffer[_requested_bytes - 1] >> 7) == 0) {
                 process();
 
@@ -238,7 +244,6 @@ void MCP342X::cbHandler(int event) {
                     _error_cb.call(Timeout);
                 }
             }
-
         }
     }
 }

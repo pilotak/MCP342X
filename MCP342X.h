@@ -67,7 +67,8 @@ class MCP342X {
         Init,
         Ready,
         Reading,
-        Waiting
+        Waiting,
+        Request
     } Stage;
 
     typedef enum {
@@ -80,7 +81,7 @@ class MCP342X {
     MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
     MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
     virtual ~MCP342X(void);
-    void init(Callback<void(uint8_t, int32_t)> done_callback, Callback<void(ErrorType)> err_callback = NULL);
+    void init(const Callback<void(uint8_t, int32_t)> &done_callback, const Callback<void(ErrorType)> &err_callback = NULL);
     bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
     void process();
     int8_t read(uint8_t channel);
@@ -100,6 +101,7 @@ class MCP342X {
     uint8_t _current_channel;
     uint8_t _requested_bytes;
     Stage _stage;
+    int32_t _queue_id;
     uint16_t _wait_time[4];
 
   protected:
