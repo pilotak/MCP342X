@@ -64,18 +64,19 @@ class MCP342X {
     } Resolution;
 
     typedef enum {
-        Init,
-        Ready,
-        Reading,
-        Waiting,
-        Request
+        Init = -1,
+        Ready = -2,
+        Reading = -3,
+        Waiting = -4,
+        Request = -5
     } Stage;
 
     typedef enum {
         NoSlave = 0,
         EventError,
         TransferError,
-        Timeout
+        Timeout,
+        NotResponding
     } ErrorType;
 
     MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
@@ -86,11 +87,11 @@ class MCP342X {
     void process();
     int8_t read(uint8_t channel);
     int32_t toVoltage(uint8_t channel, int32_t value);
+    void reset();
 
   private:
     void cbHandler(int event);
     void isConversionFinished();
-    void ready();
 
     Callback<void(uint8_t, int32_t)> _done_cb;
     Callback<void(ErrorType)> _error_cb;

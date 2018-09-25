@@ -145,36 +145,37 @@ void MCP342X::process() {
     }
 
     uint8_t channel = _current_channel;
-    ready();
+    reset();
     _done_cb.call(channel, result);
 }
 
 int8_t MCP342X::read(uint8_t channel) {
-    if (_queue_id > -1) {
-        _queue->cancel(_queue_id);
-        _queue_id = -1;
-    }
+    if (_stage == Ready) {
+        reset();
 
-    _i2c->abort_transfer();
+        _current_channel = channel;
+        _requested_bytes = 4;
+        _stage = Reading;
 
-    _current_channel = channel;
-    _requested_bytes = 4;
-    _stage = Reading;
+        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
+            _requested_bytes = 3;
+        }
 
-    if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
-        _requested_bytes = 3;
-    }
+        if (((_config[channel] >> 4) & 1) == OneShot) {
+            _config[channel] |= 128;  // new conversion
+            return transfer(&_config[channel]);
+        }
 
-    if (((_config[channel] >> 4) & 1) == OneShot) {
-        _config[channel] |= 128;  // new conversion
-        return transfer(&_config[channel]);
-
-    } else if (((_config[channel] >> 4) & 1) == Continuous) {
+        // Continuous
         isConversionFinished();
         return 1;
     }
 
-    return -1;
+    if (_error_cb) {
+        _error_cb.call(NotResponding);
+    }
+
+    return _stage;
 }
 
 bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
@@ -182,7 +183,7 @@ bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
 
     if (_i2c->transfer(_address, data, tx_len, reinterpret_cast<char *>(_Buffer), rx_len, event_callback_t(this, &MCP342X::cbHandler),
                        I2C_EVENT_ALL) != 0) {
-        ready();
+        reset();
 
         if (_error_cb) {
             _error_cb.call(TransferError);
@@ -204,20 +205,20 @@ void MCP342X::isConversionFinished() {
         transfer(&_config[_current_channel], _requested_bytes);
 
     } else {
-        ready();
+        reset();
     }
 }
 
 void MCP342X::cbHandler(int event) {
     if (event & I2C_EVENT_ERROR_NO_SLAVE) {
-        ready();
+        reset();
 
         if (_error_cb) {
             _error_cb.call(NoSlave);
         }
 
     } else if (event & I2C_EVENT_ERROR) {
-        ready();
+        reset();
 
         if (_error_cb) {
             _error_cb.call(EventError);
@@ -230,7 +231,7 @@ void MCP342X::cbHandler(int event) {
             _queue_id = _queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished));
 
             if (_current_channel > 3 || _queue_id <= 0) {
-                ready();  // prevent no space left in queue
+                reset();  // prevent no space left in queue
             }
 
         } else if (_stage == Request) {
@@ -238,7 +239,7 @@ void MCP342X::cbHandler(int event) {
                 process();
 
             } else {
-                ready();
+                reset();
 
                 if (_error_cb) {
                     _error_cb.call(Timeout);
@@ -248,9 +249,16 @@ void MCP342X::cbHandler(int event) {
     }
 }
 
-void MCP342X::ready() {
+void MCP342X::reset() {
     _stage = Ready;
     _current_channel = UCHAR_MAX;
+
+    if (_queue_id > -1) {
+        _queue->cancel(_queue_id);
+        _queue_id = -1;
+    }
+
+    _i2c->abort_transfer();
 }
 
 int32_t MCP342X::toVoltage(uint8_t channel, int32_t value) {
