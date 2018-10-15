@@ -108,6 +108,7 @@ void MCP342X::process() {
     int32_t result = 0;
     int16_t tmp;
     uint8_t resolution = ((_config[_current_channel] >> 2) & 0b11);
+    _queue_id = -1;
 
     switch (resolution) {
         case _12bit: {
@@ -230,13 +231,17 @@ void MCP342X::cbHandler(int event) {
 
             _queue_id = _queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished));
 
-            if (_current_channel > 3 || _queue_id <= 0) {
+            if (_queue_id <= 0) {
                 reset();  // prevent no space left in queue
             }
 
         } else if (_stage == Request) {
             if ((_Buffer[_requested_bytes - 1] >> 7) == 0) {
-                process();
+                _queue_id = _queue->call(callback(this, &MCP342X::process));
+
+                if (_queue_id <= 0) {
+                    reset();  // prevent no space left in queue
+                }
 
             } else {
                 reset();
