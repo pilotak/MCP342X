@@ -18,10 +18,10 @@ I2C async library for Microchip MCP342x ADC devices
 #include "MCP342X.h"
 
 I2C i2c(PB_7, PB_6);
-MCP342X adc;
-
 Thread t;
 EventQueue queue(1 * EVENTS_EVENT_SIZE);  // only one event is required
+
+MCP342X adc(&i2c, &queue);
 
 void done(uint8_t channel, int32_t value) {
     int32_t voltage = adc.toVoltage(channel, value);
@@ -33,17 +33,17 @@ void error(MCP342X::ErrorType e) {
 }
 
 int main() {
-    adc.init(&i2c, &queue, error);
-    adc.config(0, MCP342X::_16bit, MCP342X::OneShot, MCP342X::x8); //channel, precision, mode, PGA
+    adc.init(done, error);
+    adc.config(0, MCP342X::_16bit, MCP342X::OneShot, MCP342X::x8);  //channel, precision, mode, PGA
     adc.config(1, MCP342X::_12bit, MCP342X::OneShot, MCP342X::x1);
 
     t.start(callback(&queue, &EventQueue::dispatch_forever));  // dispatch queue
 
     while (1) {
-        adc.read(0, done);  // read channel 0, pass callback
+        adc.read(0);  // read channel 0
         wait_ms(250);
 
-        adc.read(1, done);  // read channel 1, pass callback
+        adc.read(1);  // read channel 1
         wait_ms(250);
     }
 }
