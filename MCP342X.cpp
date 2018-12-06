@@ -204,9 +204,6 @@ void MCP342X::isConversionFinished() {
         _config[_current_channel] &= ~(128);  // clear new conversion
 
         transfer(&_config[_current_channel], _requested_bytes);
-
-    } else {
-        reset();
     }
 }
 
