@@ -26,6 +26,7 @@ Edited for mbed by www.github.com/pilotak
 #ifndef MCP342X_H
 #define MCP342X_H
 
+#include <climits>
 #include "mbed.h"
 
 #define MCP342X_DEFAULT_ADDRESS 0x68 << 1
@@ -52,21 +53,25 @@ class MCP342X {
     _18bit
   } Resolution;
 
-  explicit MCP342X(uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
+  MCP342X(I2C * i2c_obj, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
+  MCP342X(PinName sda, PinName scl, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
   virtual ~MCP342X(void);
-  void init(I2C * i2c_obj);
+  void init();
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
   int32_t read(uint8_t channel);
   int32_t readVoltage(uint8_t channel);
   void newConversion(uint8_t channel);
+  int32_t getResult(uint8_t channel);
+  bool isConversionFinished(uint8_t channel);
 
  protected:
-  I2C * i2c;
-  uint8_t address;
+  I2C * _i2c;
+
+ private:
+  uint32_t _i2c_buffer[sizeof(I2C) / sizeof(uint32_t)];
+  uint8_t _address;
   char _config[4];
   char _Buffer[4];
-
-  bool isConversionFinished(uint8_t channel);
 };
 
 #endif  // MCP342X_H
