@@ -25,16 +25,12 @@ Edited for mbed by www.github.com/pilotak
 #include "mbed.h"
 
 MCP342X::MCP342X(I2C * i2c_obj, uint8_t slave_adr):
-    _address(slave_adr),
-    _current_channel(UCHAR_MAX),
-    _stage(Init), {
+    _address(slave_adr) {
     _i2c = i2c_obj;
 }
 
 MCP342X::MCP342X(PinName sda, PinName scl, uint8_t slave_adr, int32_t freq):
-    _address(slave_adr),
-    _current_channel(UCHAR_MAX),
-    _stage(Init), {
+    _address(slave_adr) {
     _i2c = new (_i2c_buffer) I2C(sda, scl);
     _i2c->frequency(freq);
 }
@@ -45,9 +41,7 @@ MCP342X::~MCP342X(void) {
     }
 }
 
-void MCP342X::init(I2C * i2c_obj) {
-    i2c = i2c_obj;
-
+void MCP342X::init() {
     _config[0] = 0b00010000;  // channel 1, continuous mode, 12bit
     _config[1] = 0b00110000;  // channel 2, continuous mode, 12bit
     _config[2] = 0b01010000;  // channel 3, continuous mode, 12bit
@@ -60,10 +54,10 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
     _config[channel] |= ((res << 2) | gain);
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
-    if (i2c != NULL) {
-        i2c->lock();
-        i2c->write(address, &_config[channel], 1);
-        i2c->unlock();
+    if (_i2c != NULL) {
+        _i2c->lock();
+        _i2c->write(_address, &_config[channel], 1);
+        _i2c->unlock();
 
         return true;
     }
@@ -74,9 +68,9 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
 void MCP342X::newConversion(uint8_t channel) {
     char byte = _config[channel] |= 128;
 
-    i2c->lock();
-    i2c->write(address, &byte, 1);
-    i2c->unlock();
+    _i2c->lock();
+    _i2c->write(_address, &byte, 1);
+    _i2c->unlock();
 }
 
 bool MCP342X::isConversionFinished(uint8_t channel) {
@@ -86,9 +80,9 @@ bool MCP342X::isConversionFinished(uint8_t channel) {
         requested_bytes = 3;
     }
 
-    i2c->lock();
-    i2c->read(address, _Buffer, requested_bytes);
-    i2c->unlock();
+    _i2c->lock();
+    _i2c->read(_address, _Buffer, requested_bytes);
+    _i2c->unlock();
 
     return _Buffer[requested_bytes - 1] >> 7;
 }
@@ -102,7 +96,7 @@ int32_t MCP342X::read(uint8_t channel) {
     }
 
     delay = (resolution == _12bit ? 4 : (resolution == _14bit ? 16 : (resolution == _16bit ? 66 : 266)));
-    Thread::wait(delay);
+    ThisThread::sleep_for(delay);
 
     Timer timer;
     timer.start();
@@ -110,7 +104,7 @@ int32_t MCP342X::read(uint8_t channel) {
     while (isConversionFinished(channel) == 1) {
         if (timer.read_ms() >= MCP342X_DEFAULT_TIMEOUT) {
             timer.stop();
-            debug("ADC timeout\n");
+            // debug("ADC timeout\n");
             return LONG_MIN;
         }
     }
