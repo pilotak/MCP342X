@@ -51,40 +51,56 @@ void MCP342X::init() {
 }
 
 bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain) {
+    int32_t ack;
     _config[channel] |= ((res << 2) | gain);
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
     if (_i2c != NULL) {
         _i2c->lock();
-        _i2c->write(_address, &_config[channel], 1);
+        ack = _i2c->write(_address, &_config[channel], 1);
         _i2c->unlock();
 
-        return true;
+        return (ack == 0 ? true : false);
     }
 
     return false;
 }
 
-void MCP342X::newConversion(uint8_t channel) {
+bool MCP342X::newConversion(uint8_t channel) {
     char byte = _config[channel] |= 128;
+    int32_t ack;
+
+    memset(_Buffer, 0, sizeof(_Buffer));
 
     _i2c->lock();
-    _i2c->write(_address, &byte, 1);
+    ack = _i2c->write(_address, &byte, 1);
     _i2c->unlock();
+
+    return (ack == 0 ? true : false);
 }
 
 bool MCP342X::isConversionFinished(uint8_t channel) {
     char requested_bytes = 4;
+    int32_t ack;
 
-    if (((_config[channel] >> 2) & 0b11) != 0b11) {  // 18bit
+    if (((_config[channel] >> 2) & 0b11) != 0b11) {  // not 18bit
         requested_bytes = 3;
     }
 
+    memset(_Buffer, 0, sizeof(_Buffer));
+
     _i2c->lock();
-    _i2c->read(_address, _Buffer, requested_bytes);
+    ack = _i2c->read(_address, _Buffer, requested_bytes);
     _i2c->unlock();
 
-    return _Buffer[requested_bytes - 1] >> 7;
+    if (ack == 0 && (_Buffer[requested_bytes - 1] >> 7) == 0) {
+        if (((_Buffer[requested_bytes - 1] >> 5) & 0b11) == channel) {
+            _i2c->read(0);  // send NACK
+            return false;  // data ready
+        }
+    }
+
+    return true;  // not ready
 }
 
 int32_t MCP342X::read(uint8_t channel) {
@@ -92,22 +108,27 @@ int32_t MCP342X::read(uint8_t channel) {
     uint8_t delay = 4;
 
     if (((_config[channel] >> 4) & 1) == OneShot) {
-        newConversion(channel);
+        if (!newConversion(channel)) {
+            return LONG_MIN;
+        }
     }
 
     delay = (resolution == _12bit ? 4 : (resolution == _14bit ? 16 : (resolution == _16bit ? 66 : 266)));
     ThisThread::sleep_for(delay);
 
-    Timer timer;
+    LowPowerTimer timer;
     timer.start();
 
     while (isConversionFinished(channel) == 1) {
         if (timer.read_ms() >= MCP342X_DEFAULT_TIMEOUT) {
             timer.stop();
-            // debug("ADC timeout\n");
             return LONG_MIN;
         }
+
+        wait_us(250);
     }
+
+    timer.stop();
 
     return getResult(channel);
 }
@@ -117,46 +138,42 @@ int32_t MCP342X::getResult(uint8_t channel) {
     int16_t tmp = 0;
     uint8_t resolution = ((_config[channel] >> 2) & 0b11);
 
-    if (!isConversionFinished(channel)) {  // got new data
-        switch (resolution) {
-            case _12bit: {
-                tmp = ((_Buffer[0] << 8) | _Buffer[1]);
-                tmp &= 0x0FFF;  // substract 12bit
+    switch (resolution) {
+        case _12bit: {
+            tmp = ((_Buffer[0] << 8) | _Buffer[1]);
+            tmp &= 0x0FFF;  // substract 12bit
 
-                result = (int32_t)tmp;
+            result = (int32_t)tmp;
 
-                break;
-            }
-
-            case _14bit: {
-                tmp = ((_Buffer[0] << 8) | _Buffer[1]);
-                tmp &= 0x3FFF;  // substract 14bit
-
-                result = (int32_t)tmp;
-
-                break;
-            }
-
-            case _16bit: {
-                tmp = ((_Buffer[0] << 8) | _Buffer[1]);
-
-                result = (int32_t)tmp;
-
-                break;
-            }
-
-            case _18bit: {
-                result = ((_Buffer[0] << 16) | (_Buffer[1] << 8) | _Buffer[2]);
-                result &= 0x3FFFF;  // substract 18bit
-
-                break;
-            }
+            break;
         }
 
-        return result;
+        case _14bit: {
+            tmp = ((_Buffer[0] << 8) | _Buffer[1]);
+            tmp &= 0x3FFF;  // substract 14bit
+
+            result = (int32_t)tmp;
+
+            break;
+        }
+
+        case _16bit: {
+            tmp = ((_Buffer[0] << 8) | _Buffer[1]);
+
+            result = (int32_t)tmp;
+
+            break;
+        }
+
+        case _18bit: {
+            result = ((_Buffer[0] << 16) | (_Buffer[1] << 8) | _Buffer[2]);
+            result &= 0x3FFFF;  // substract 18bit
+
+            break;
+        }
     }
 
-    return LONG_MIN;
+    return result;
 }
 
 int32_t MCP342X::readVoltage(uint8_t channel) {

@@ -60,7 +60,7 @@ class MCP342X {
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
   int32_t read(uint8_t channel);
   int32_t readVoltage(uint8_t channel);
-  void newConversion(uint8_t channel);
+  bool newConversion(uint8_t channel);
   int32_t getResult(uint8_t channel);
   bool isConversionFinished(uint8_t channel);
 
