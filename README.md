@@ -17,10 +17,10 @@ Originally Arduino library ported to mbedOS5 to support Microchip MCP342x ADC ov
 #include "MCP342X.h"
 
 I2C i2c(PB_9, PB_8);
-MCP342X adc;
+MCP342X adc(&i2c);
 
 int main() {
-    adc.init(&i2c);
+    adc.init();
     adc.config(0, MCP342X::_12bit, MCP342X::OneShot, MCP342X::x2); //channel, precision, mode, PGA
     adc.config(1, MCP342X::_18bit, MCP342X::OneShot, MCP342X::x1);
 
