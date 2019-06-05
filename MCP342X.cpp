@@ -41,13 +41,21 @@ MCP342X::~MCP342X(void) {
     }
 }
 
-void MCP342X::init() {
+bool MCP342X::init() {
+    int32_t ack;
     _config[0] = 0b00010000;  // channel 1, continuous mode, 12bit
     _config[1] = 0b00110000;  // channel 2, continuous mode, 12bit
     _config[2] = 0b01010000;  // channel 3, continuous mode, 12bit
     _config[3] = 0b01110000;  // channel 4, continuous mode, 12bit
 
     memset(_Buffer, 0, sizeof(_Buffer));
+
+    // test if device is on the bus
+    _i2c->lock();
+    ack = _i2c->write(_address, &_config[0], 1);
+    _i2c->unlock();
+
+    return (ack == 0 ? true : false);
 }
 
 bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain) {

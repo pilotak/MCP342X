@@ -56,7 +56,7 @@ class MCP342X {
   MCP342X(I2C * i2c_obj, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
   MCP342X(PinName sda, PinName scl, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
   virtual ~MCP342X(void);
-  void init();
+  bool init();
   bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
   int32_t read(uint8_t channel);
   int32_t readVoltage(uint8_t channel);
