@@ -41,8 +41,13 @@ MCP342X::~MCP342X(void) {
     }
 }
 
-bool MCP342X::init() {
-    int32_t ack;
+bool MCP342X::init(I2C * i2c_obj) {
+    int32_t ack = -1;
+
+    if (i2c_obj != NULL) {
+        _i2c = i2c_obj;
+    }
+
     _config[0] = 0b00010000;  // channel 1, continuous mode, 12bit
     _config[1] = 0b00110000;  // channel 2, continuous mode, 12bit
     _config[2] = 0b01010000;  // channel 3, continuous mode, 12bit
@@ -51,15 +56,17 @@ bool MCP342X::init() {
     memset(_Buffer, 0, sizeof(_Buffer));
 
     // test if device is on the bus
-    _i2c->lock();
-    ack = _i2c->write(_address, &_config[0], 1);
-    _i2c->unlock();
+    if (_i2c != NULL) {
+        _i2c->lock();
+        ack = _i2c->write(_address, &_config[0], 1);
+        _i2c->unlock();
+    }
 
-    return (ack == 0 ? true : false);
+    return (ack == 0);
 }
 
 bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain) {
-    int32_t ack;
+    int32_t ack = -1;
     _config[channel] |= ((res << 2) | gain);
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
@@ -68,7 +75,7 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
         ack = _i2c->write(_address, &_config[channel], 1);
         _i2c->unlock();
 
-        return (ack == 0 ? true : false);
+        return (ack == 0);
     }
 
     return false;
@@ -76,7 +83,7 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
 
 bool MCP342X::newConversion(uint8_t channel) {
     char byte = _config[channel] |= 128;
-    int32_t ack;
+    int32_t ack = -1;
 
     memset(_Buffer, 0, sizeof(_Buffer));
 
@@ -84,12 +91,12 @@ bool MCP342X::newConversion(uint8_t channel) {
     ack = _i2c->write(_address, &byte, 1);
     _i2c->unlock();
 
-    return (ack == 0 ? true : false);
+    return (ack == 0);
 }
 
 bool MCP342X::isConversionFinished(uint8_t channel) {
     char requested_bytes = 4;
-    int32_t ack;
+    int32_t ack = -1;
 
     if (((_config[channel] >> 2) & 0b11) != 0b11) {  // not 18bit
         requested_bytes = 3;
