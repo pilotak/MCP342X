@@ -28,9 +28,11 @@ Edited for mbed by www.github.com/pilotak
 
 #include <climits>
 #include "mbed.h"
+#include <chrono>
+using namespace std::chrono;
 
 #define MCP342X_DEFAULT_ADDRESS 0x68 << 1
-#define MCP342X_DEFAULT_TIMEOUT 100  // ms
+#define MCP342X_DEFAULT_TIMEOUT 100ms
 
 class MCP342X {
  public:

@@ -120,7 +120,7 @@ bool MCP342X::isConversionFinished(uint8_t channel) {
 
 int32_t MCP342X::read(uint8_t channel) {
     uint8_t resolution = ((_config[channel] >> 2) & 0b11);
-    uint8_t delay = 4;
+    auto delay = 4ms;
 
     if (((_config[channel] >> 4) & 1) == OneShot) {
         if (!newConversion(channel)) {
@@ -128,14 +128,14 @@ int32_t MCP342X::read(uint8_t channel) {
         }
     }
 
-    delay = (resolution == _12bit ? 4 : (resolution == _14bit ? 16 : (resolution == _16bit ? 66 : 266)));
+    delay = (resolution == _12bit ? 4ms : (resolution == _14bit ? 16ms : (resolution == _16bit ? 66ms : 266ms)));
     ThisThread::sleep_for(delay);
 
-    LowPowerTimer timer;
+    Timer timer;
     timer.start();
 
     while (isConversionFinished(channel) == 1) {
-        if (timer.read_ms() >= MCP342X_DEFAULT_TIMEOUT) {
+        if (timer.elapsed_time() >= MCP342X_DEFAULT_TIMEOUT) {
             timer.stop();
             return LONG_MIN;
         }
