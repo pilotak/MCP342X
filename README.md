@@ -1,6 +1,7 @@
 # MCP342x ADC library for mbed
+[![Framework Badge mbed](https://img.shields.io/badge/framework-mbed-008fbe.svg)](https://os.mbed.com/)
 
-Originally Arduino library ported to mbedOS5 to support Microchip MCP342x ADC over I2C
+Originally an Arduino library ported to mbedOS 6 to support Microchip MCP342x ADC over I2C
 
 ## Supported devices
 
@@ -21,7 +22,7 @@ MCP342X adc(&i2c);
 
 int main() {
     adc.init();
-    adc.config(0, MCP342X::_12bit, MCP342X::OneShot, MCP342X::x2); //channel, precision, mode, PGA
+    adc.config(0, MCP342X::_12bit, MCP342X::OneShot, MCP342X::x2); // channel, precision, mode, PGA
     adc.config(1, MCP342X::_18bit, MCP342X::OneShot, MCP342X::x1);
 
     while (1) {
@@ -29,8 +30,8 @@ int main() {
         int32_t adc2_v = adc.readVoltage(1);
 
         printf("ADC1 value: %ld\t", adc1);
-        printf("ADC2 voltage: %lf V\n", (double)adc2_v/1000000); // convert uV->V
-        wait_ms(500);
+        printf("ADC2 voltage: %ld uV\n", adc2_v); // convert uV->V
+        ThisThread::sleep_for(500ms);
     }
 }
 ```
