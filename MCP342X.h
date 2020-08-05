@@ -27,23 +27,18 @@ SOFTWARE.
 
 #include <climits>
 #include "mbed.h"
-#include "mbed_events.h"
+#include <chrono>
+using namespace std::chrono;
 
 #define MCP342X_DEFAULT_ADDRESS 0x68 << 1
+#define MCP342X_DEFAULT_TIMEOUT 100ms
 
 class MCP342X {
-  public:
-    typedef enum {
-        OneShot = 0,
-        Continuous
-    } Conversion;
-
-    typedef enum {
-        x1 = 0,
-        x2,
-        x4,
-        x8
-    } PGA;
+ public:
+  typedef enum {
+    OneShot = 0,
+    Continuous
+  } Conversion;
 
     typedef enum {
         _12bit = 0,
@@ -60,47 +55,25 @@ class MCP342X {
         Request = -5
     } Stage;
 
-    typedef enum {
-        NoSlave = 0,
-        EventError,
-        TransferError,
-        Timeout,
-        NotResponding
-    } ErrorType;
+  MCP342X(I2C * i2c_obj, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
+  MCP342X(PinName sda, PinName scl, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
+  virtual ~MCP342X(void);
+  bool init(I2C * i2c_obj = NULL);
+  bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
+  int32_t read(uint8_t channel);
+  int32_t readVoltage(uint8_t channel);
+  bool newConversion(uint8_t channel);
+  int32_t getResult(uint8_t channel);
+  bool isConversionFinished(uint8_t channel);
 
-    MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS);
-    MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr = MCP342X_DEFAULT_ADDRESS, int32_t freq = 400000);
-    virtual ~MCP342X(void);
-    void init(const Callback<void(uint8_t, int32_t)> &done_callback, const Callback<void(ErrorType)> &err_callback = NULL);
-    bool config(uint8_t channel, Resolution res = _12bit, Conversion mode = Continuous, PGA gain = x1);
-    void process();
-    int8_t read(uint8_t channel);
-    int32_t toVoltage(uint8_t channel, int32_t value);
-    void reset();
+ protected:
+  I2C * _i2c;
 
-  private:
-    void cbHandler(int event);
-    void isConversionFinished();
-
-    Callback<void(uint8_t, int32_t)> _done_cb;
-    Callback<void(ErrorType)> _error_cb;
-
-    uint8_t _address;
-    char _config[4];
-    char _Buffer[4];
-    uint8_t _current_channel;
-    uint8_t _requested_bytes;
-    Stage _stage;
-    int32_t _queue_id;
-    uint16_t _wait_time[4];
-
-  protected:
-    I2C * _i2c;
-    uint32_t _i2c_buffer[sizeof(I2C) / sizeof(uint32_t)];
-    EventQueue * _queue;
-
-    bool transfer(const char *data, uint8_t rx_len = 0, uint8_t tx_len = 1);
+ private:
+  uint32_t _i2c_buffer[sizeof(I2C) / sizeof(uint32_t)];
+  uint8_t _address;
+  char _config[4];
+  char _Buffer[4];
 };
 
-#endif
-
+#endif  // MCP342X_H

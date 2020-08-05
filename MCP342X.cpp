@@ -26,23 +26,15 @@ SOFTWARE.
 #include "mbed_events.h"
 #include "MCP342X.h"
 
-MCP342X::MCP342X(PinName sda, PinName scl, EventQueue * queue, uint8_t slave_adr, int32_t freq):
-    _address(slave_adr),
-    _current_channel(UCHAR_MAX),
-    _stage(Init),
-    _queue_id(-1) {
-    _i2c = new (_i2c_buffer) I2C(sda, scl);
-    _i2c->frequency(freq);
-    _queue = queue;
+MCP342X::MCP342X(I2C * i2c_obj, uint8_t slave_adr):
+    _address(slave_adr) {
+    _i2c = i2c_obj;
 }
 
-MCP342X::MCP342X(I2C * i2c_obj, EventQueue * queue, uint8_t slave_adr):
-    _address(slave_adr),
-    _current_channel(UCHAR_MAX),
-    _stage(Init),
-    _queue_id(-1) {
-    _i2c = i2c_obj;
-    _queue = queue;
+MCP342X::MCP342X(PinName sda, PinName scl, uint8_t slave_adr, int32_t freq):
+    _address(slave_adr) {
+    _i2c = new (_i2c_buffer) I2C(sda, scl);
+    _i2c->frequency(freq);
 }
 
 MCP342X::~MCP342X(void) {
@@ -51,64 +43,118 @@ MCP342X::~MCP342X(void) {
     }
 }
 
-void MCP342X::init(const Callback<void(uint8_t, int32_t)> &done_callback, const Callback<void(ErrorType)> &err_callback) {
-    _done_cb = done_callback;
-    _error_cb = err_callback;
+bool MCP342X::init(I2C * i2c_obj) {
+    int32_t ack = -1;
+
+    if (i2c_obj != NULL) {
+        _i2c = i2c_obj;
+    }
 
     _config[0] = 0b00010000;  // channel 1, continuous mode, 12bit
     _config[1] = 0b00110000;  // channel 2, continuous mode, 12bit
     _config[2] = 0b01010000;  // channel 3, continuous mode, 12bit
     _config[3] = 0b01110000;  // channel 4, continuous mode, 12bit
 
-    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
-    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
-    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
-    _wait_time[0] = 5;  // one samples takes 4.166ms@12bit
+    memset(_Buffer, 0, sizeof(_Buffer));
 
-    memset(_Buffer, 0xFF, sizeof(_Buffer));
+    // test if device is on the bus
+    if (_i2c != NULL) {
+        _i2c->lock();
+        ack = _i2c->write(_address, &_config[0], 1);
+        _i2c->unlock();
+    }
+
+    return (ack == 0);
 }
 
 bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain) {
+    int32_t ack = -1;
     _config[channel] |= ((res << 2) | gain);
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
-    switch (res) {
-        case _12bit:
-            _wait_time[channel] = 5;  // 4.166ms@12bit
-            break;
+    if (_i2c != NULL) {
+        _i2c->lock();
+        ack = _i2c->write(_address, &_config[channel], 1);
+        _i2c->unlock();
 
-        case _14bit:
-            _wait_time[channel] = 17;  // 16.666ms@14bit
-            break;
+        return (ack == 0);
+    }
 
         case _16bit:
             _wait_time[channel] = 67;  // 66.666ms@16bit
             break;
 
-        case _18bit:
-            _wait_time[channel] = 267;  // 266.666ms@18bit
-            break;
+bool MCP342X::newConversion(uint8_t channel) {
+    char byte = _config[channel] |= 128;
+    int32_t ack = -1;
+
+    memset(_Buffer, 0, sizeof(_Buffer));
+
+    _i2c->lock();
+    ack = _i2c->write(_address, &byte, 1);
+    _i2c->unlock();
+
+    return (ack == 0);
+}
+
+bool MCP342X::isConversionFinished(uint8_t channel) {
+    char requested_bytes = 4;
+    int32_t ack = -1;
+
+    if (((_config[channel] >> 2) & 0b11) != 0b11) {  // not 18bit
+        requested_bytes = 3;
     }
 
-    if (_i2c != NULL && _queue != NULL) {
-        _stage = Ready;
+    memset(_Buffer, 0, sizeof(_Buffer));
 
-        if (mode == Continuous) {
-            return transfer(&_config[channel]);
+    _i2c->lock();
+    ack = _i2c->read(_address, _Buffer, requested_bytes);
+    _i2c->unlock();
 
-        } else {
-            return true;
+    if (ack == 0 && (_Buffer[requested_bytes - 1] >> 7) == 0) {
+        if (((_Buffer[requested_bytes - 1] >> 5) & 0b11) == channel) {
+            _i2c->read(0);  // send NACK
+            return false;  // data ready
         }
     }
 
-    return false;
+    return true;  // not ready
 }
 
-void MCP342X::process() {
-    int32_t result = 0;
-    int16_t tmp;
-    uint8_t resolution = ((_config[_current_channel] >> 2) & 0b11);
-    _queue_id = -1;
+int32_t MCP342X::read(uint8_t channel) {
+    uint8_t resolution = ((_config[channel] >> 2) & 0b11);
+    auto delay = 4ms;
+
+    if (((_config[channel] >> 4) & 1) == OneShot) {
+        if (!newConversion(channel)) {
+            return LONG_MIN;
+        }
+    }
+
+    delay = (resolution == _12bit ? 4ms : (resolution == _14bit ? 16ms : (resolution == _16bit ? 66ms : 266ms)));
+    ThisThread::sleep_for(delay);
+
+    Timer timer;
+    timer.start();
+
+    while (isConversionFinished(channel) == 1) {
+        if (timer.elapsed_time() >= MCP342X_DEFAULT_TIMEOUT) {
+            timer.stop();
+            return LONG_MIN;
+        }
+
+        wait_us(250);
+    }
+
+    timer.stop();
+
+    return getResult(channel);
+}
+
+int32_t MCP342X::getResult(uint8_t channel) {
+    int32_t result = LONG_MIN;
+    int16_t tmp = 0;
+    uint8_t resolution = ((_config[channel] >> 2) & 0b11);
 
     switch (resolution) {
         case _12bit: {
@@ -150,120 +196,8 @@ void MCP342X::process() {
     _done_cb.call(channel, result);
 }
 
-int8_t MCP342X::read(uint8_t channel) {
-    if (_stage == Ready) {
-        reset();
-
-        _current_channel = channel;
-        _requested_bytes = 4;
-        _stage = Reading;
-
-        if (((_config[_current_channel] >> 2) & 0b11) != 0b11) {  // is not 18bit
-            _requested_bytes = 3;
-        }
-
-        if (((_config[channel] >> 4) & 1) == OneShot) {
-            _config[channel] |= 128;  // new conversion
-            return transfer(&_config[channel]);
-        }
-
-        // Continuous
-        isConversionFinished();
-        return 1;
-    }
-
-    if (_error_cb) {
-        _error_cb.call(NotResponding);
-    }
-
-    return _stage;
-}
-
-bool MCP342X::transfer(const char *data, uint8_t rx_len, uint8_t tx_len) {
-    memset(_Buffer, 0xFF, sizeof(_Buffer));  // null buffer
-
-    if (_i2c->transfer(_address, data, tx_len, reinterpret_cast<char *>(_Buffer), rx_len, event_callback_t(this, &MCP342X::cbHandler),
-                       I2C_EVENT_ALL) != 0) {
-        reset();
-
-        if (_error_cb) {
-            _error_cb.call(TransferError);
-        }
-
-        return false;
-    }
-
-    return true;
-}
-
-void MCP342X::isConversionFinished() {
-    _queue_id = -1;
-
-    if (_current_channel < 4) {
-        _stage = Request;
-        _config[_current_channel] &= ~(128);  // clear new conversion
-
-        transfer(&_config[_current_channel], _requested_bytes);
-    }
-}
-
-void MCP342X::cbHandler(int event) {
-    if (event & I2C_EVENT_ERROR_NO_SLAVE) {
-        reset();
-
-        if (_error_cb) {
-            _error_cb.call(NoSlave);
-        }
-
-    } else if (event & I2C_EVENT_ERROR) {
-        reset();
-
-        if (_error_cb) {
-            _error_cb.call(EventError);
-        }
-
-    } else {
-        if (_stage == Reading) {
-            _stage = Waiting;
-
-            _queue_id = _queue->call_in(_wait_time[_current_channel], callback(this, &MCP342X::isConversionFinished));
-
-            if (_queue_id <= 0) {
-                reset();  // prevent no space left in queue
-            }
-
-        } else if (_stage == Request) {
-            if ((_Buffer[_requested_bytes - 1] >> 7) == 0) {
-                _queue_id = _queue->call(callback(this, &MCP342X::process));
-
-                if (_queue_id <= 0) {
-                    reset();  // prevent no space left in queue
-                }
-
-            } else {
-                reset();
-
-                if (_error_cb) {
-                    _error_cb.call(Timeout);
-                }
-            }
-        }
-    }
-}
-
-void MCP342X::reset() {
-    _stage = Ready;
-    _current_channel = UCHAR_MAX;
-
-    if (_queue_id > -1) {
-        _queue->cancel(_queue_id);
-        _queue_id = -1;
-    }
-
-    _i2c->abort_transfer();
-}
-
-int32_t MCP342X::toVoltage(uint8_t channel, int32_t value) {
+int32_t MCP342X::readVoltage(uint8_t channel) {
+    int32_t result = read(channel);
     uint8_t resolution = ((_config[channel] >> 2) & 0b11);
     uint8_t pga = (_config[channel] & 0b11);
 
