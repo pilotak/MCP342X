@@ -22,8 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include "mbed.h"
-#include "mbed_events.h"
 #include "MCP342X.h"
 
 MCP342X::MCP342X(I2C * i2c_obj, uint8_t slave_adr):
