@@ -24,7 +24,7 @@ SOFTWARE.
 
 #include "MCP342X.h"
 
-MCP342X::MCP342X(I2C * i2c_obj, uint8_t slave_adr):
+MCP342X::MCP342X(I2C *i2c_obj, uint8_t slave_adr):
     _address(slave_adr) {
     _i2c = i2c_obj;
 }
@@ -36,12 +36,12 @@ MCP342X::MCP342X(PinName sda, PinName scl, uint8_t slave_adr, int32_t freq):
 }
 
 MCP342X::~MCP342X(void) {
-    if (_i2c == reinterpret_cast<I2C*>(_i2c_buffer)) {
+    if (_i2c == reinterpret_cast<I2C *>(_i2c_buffer)) {
         _i2c->~I2C();
     }
 }
 
-bool MCP342X::init(I2C * i2c_obj) {
+bool MCP342X::init(I2C *i2c_obj) {
     int32_t ack = -1;
 
     if (i2c_obj != NULL) {
@@ -78,9 +78,8 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
         return (ack == 0);
     }
 
-        case _16bit:
-            _wait_time[channel] = 67;  // 66.666ms@16bit
-            break;
+    return false;
+}
 
 bool MCP342X::newConversion(uint8_t channel) {
     char byte = _config[channel] |= 128;
@@ -189,9 +188,7 @@ int32_t MCP342X::getResult(uint8_t channel) {
         }
     }
 
-    uint8_t channel = _current_channel;
-    reset();
-    _done_cb.call(channel, result);
+    return result;
 }
 
 int32_t MCP342X::readVoltage(uint8_t channel) {
@@ -219,29 +216,29 @@ int32_t MCP342X::readVoltage(uint8_t channel) {
 
     switch (resolution) {
         case _12bit:
-            value /= pga;
-            value *= 1000;
+            result /= pga;
+            result *= 1000;
 
             break;
 
         case _14bit:
-            value /= pga;
-            value *= 250;
+            result /= pga;
+            result *= 250;
 
             break;
 
         case _16bit:
-            value /= pga;
-            value *= 62.5;
+            result /= pga;
+            result *= 62.5;
 
             break;
 
         case _18bit:
-            value /= pga;
-            value *= 15.625;
+            result /= pga;
+            result *= 15.625;
 
             break;
     }
 
-    return value;
+    return result;
 }
