@@ -21,17 +21,17 @@ I2C i2c(PB_9, PB_8);
 MCP342X adc(&i2c);
 
 int main() {
-    adc.init();
-    adc.config(0, MCP342X::_12bit, MCP342X::OneShot, MCP342X::x2); // channel, precision, mode, PGA
-    adc.config(1, MCP342X::_18bit, MCP342X::OneShot, MCP342X::x1);
+    if(adc.init()){
+        adc.config(0, MCP342X::_12bit, MCP342X::OneShot, MCP342X::x2); // channel, precision, mode, PGA
+        adc.config(1, MCP342X::_18bit, MCP342X::OneShot, MCP342X::x1);
 
-    while (1) {
-        adc.read(0);  // read channel 0
-        wait_ms(250);
-
-        printf("ADC1 value: %ld\t", adc1);
-        printf("ADC2 voltage: %ld uV\n", adc2_v); // convert uV->V
-        ThisThread::sleep_for(500ms);
+        while (1) {
+            printf("ADC1 value: %ld\t", adc.read(0)); // read channel 0
+            printf("ADC2 voltage: %ld uV\n", adc.readVoltage(1)); // read voltage at channel 1
+            ThisThread::sleep_for(500ms);
+        }
     }
+
+    printf("failed to init\n");
 }
 ```
