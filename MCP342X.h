@@ -63,7 +63,14 @@ class MCP342X {
     int32_t readVoltage(uint8_t channel);
     bool newConversion(uint8_t channel);
     int32_t getResult(uint8_t channel);
-    bool isConversionFinished(uint8_t channel);
+
+    /**
+     * @brief Check in conversion is done
+     * 
+     * @param channel 
+     * @return 0 if not done, 1 if done, -1 in case of error
+     */
+    int8_t isConversionFinished(uint8_t channel);
 
   protected:
     I2C *_i2c;

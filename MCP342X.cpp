@@ -48,6 +48,8 @@ bool MCP342X::init(I2C *i2c_obj) {
         _i2c = i2c_obj;
     }
 
+    MBED_ASSERT(_i2c);
+
     _config[0] = 0b00010000;  // channel 1, continuous mode, 12bit
     _config[1] = 0b00110000;  // channel 2, continuous mode, 12bit
     _config[2] = 0b01010000;  // channel 3, continuous mode, 12bit
@@ -55,12 +57,9 @@ bool MCP342X::init(I2C *i2c_obj) {
 
     memset(_Buffer, 0, sizeof(_Buffer));
 
-    // test if device is on the bus
-    if (_i2c != NULL) {
-        _i2c->lock();
-        ack = _i2c->write(_address, &_config[0], 1);
-        _i2c->unlock();
-    }
+    _i2c->lock();
+    ack = _i2c->write(_address, &_config[0], 1);
+    _i2c->unlock();
 
     return (ack == 0);
 }
@@ -70,15 +69,11 @@ bool MCP342X::config(uint8_t channel, Resolution res, Conversion mode, PGA gain)
     _config[channel] |= ((res << 2) | gain);
     _config[channel] ^= (-mode ^ _config[channel]) & (1 << 4);
 
-    if (_i2c != NULL) {
-        _i2c->lock();
-        ack = _i2c->write(_address, &_config[channel], 1);
-        _i2c->unlock();
+    _i2c->lock();
+    ack = _i2c->write(_address, &_config[channel], 1);
+    _i2c->unlock();
 
-        return (ack == 0);
-    }
-
-    return false;
+    return (ack == 0);
 }
 
 bool MCP342X::newConversion(uint8_t channel) {
@@ -94,7 +89,7 @@ bool MCP342X::newConversion(uint8_t channel) {
     return (ack == 0);
 }
 
-bool MCP342X::isConversionFinished(uint8_t channel) {
+int8_t MCP342X::isConversionFinished(uint8_t channel) {
     char requested_bytes = 4;
     int32_t ack = -1;
 
@@ -111,11 +106,12 @@ bool MCP342X::isConversionFinished(uint8_t channel) {
     if (ack == 0 && (_Buffer[requested_bytes - 1] >> 7) == 0) {
         if (((_Buffer[requested_bytes - 1] >> 5) & 0b11) == channel) {
             _i2c->read(0);  // send NACK
-            return false;  // data ready
+            return 1;  // data ready
         }
     }
 
-    return true;  // not ready
+    // TODO -1
+    return 0;  // not ready
 }
 
 int32_t MCP342X::read(uint8_t channel) {
